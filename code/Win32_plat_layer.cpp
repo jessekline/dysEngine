@@ -1,8 +1,10 @@
 /* Main entry point for windows */
 
 #include <dsound.h>
+#include <intrin.h>
 #include <math.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <windows.h>
 #include <xinput.h>
@@ -393,6 +395,10 @@ WinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR commandLine, int showC
     //    myWindow.hIcon = ;
     myWindowClass.lpszClassName = "gameWindowClass";
 
+    LARGE_INTEGER perfCountFrequencyTemp;
+    QueryPerformanceFrequency(&perfCountFrequencyTemp);
+    int64_t perfCountFrequency = perfCountFrequencyTemp.QuadPart;
+
     /* Registering a window class applies its properties */
     if (RegisterClassA(&myWindowClass)) {
         HWND window = CreateWindowExA(
@@ -422,6 +428,11 @@ WinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR commandLine, int showC
             Win32_FillSoundBuffer(&soundOutput, 0,
                                   soundOutput.latencySampleCount * soundOutput.bytesPerSample);
             globalSecondaryBuffer->Play(0, 0, DSBPLAY_LOOPING);
+
+            LARGE_INTEGER prevCounter;
+            QueryPerformanceCounter(&prevCounter);
+
+            uint64_t lastCycleCount = __rdtsc();
 
             while (globalRunning) {
 
@@ -519,6 +530,27 @@ WinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR commandLine, int showC
                 windowDimension_t dimension = Win32_GetWindowDimension(window);
                 Win32_DisplayBufferInWindow(deviceContext, dimension.width, dimension.height,
                                             &globalBackbuffer, 0, 0);
+
+                uint64_t endCycleCount = __rdtsc();
+
+                LARGE_INTEGER endCounter;
+                QueryPerformanceCounter(&endCounter);
+
+                uint64_t cyclesElapsed = endCycleCount - lastCycleCount;
+                int64_t counterElapsed =
+                  endCounter.QuadPart - prevCounter.QuadPart; // Counts per frame
+                float MS_per_frame =
+                  (float)((1000.0f * (float)counterElapsed) / (float)perfCountFrequency);
+                float FPS  = (float)perfCountFrequency / (float)counterElapsed;
+                float MCPF = (float)(cyclesElapsed / (1000.0f * 1000.0f)); // Megacycles per frame
+
+                // Display the value of endCounter
+                char buffer[256];
+                sprintf(buffer, "%.4fms/f,  %.4ff/s,  %.4fmc/f\n", MS_per_frame, FPS, MCPF);
+                OutputDebugStringA(buffer);
+
+                prevCounter    = endCounter;
+                lastCycleCount = endCycleCount;
             }
 
         } else {
